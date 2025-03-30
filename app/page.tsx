@@ -1,103 +1,143 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import DashboardNav from "@/components/DashboardNav";
+import { useState, useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
+import { FaUsers, FaChartLine, FaBullhorn, FaCheckCircle, FaGift } from "react-icons/fa";
+
+const Dashboard = () => {
+  const { user } = useUser();
+  const [analyticsData, setAnalyticsData] = useState({
+    totalCampaigns: 0,
+    totalReferrals: 0,
+    totalReferredUsers: 0,
+    totalPointsEarned: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        // Fetch campaigns
+        const campaignsRes = await fetch(`/api/campaign?uid=${user?.id}&type=all`);
+        const campaignsData = await campaignsRes.json();
+        
+        // Fetch referral stats
+        const statsRes = await fetch(`/api/referral?stats=true&userId=${user?.id}`);
+        const statsData = await statsRes.json();
+
+        setAnalyticsData({
+          totalCampaigns: campaignsData.length || 0,
+          totalReferrals: statsData.totalReferrals || 0,
+          totalReferredUsers: statsData.totalReferredUsers || 0,
+          totalPointsEarned: statsData.totalPointsEarned || 0,
+        });
+      } catch (error) {
+        console.error("Error fetching analytics:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user?.id) {
+      fetchAnalytics();
+    }
+  }, [user?.id]);
+
+  if (loading) return <div>Loading...</div>;
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="flex h-screen bg-gray-50 ml-[20%]">
+      {/* Main Content */}
+      <main className="flex-1 p-8 overflow-auto">
+        <h1 className="text-4xl font-extrabold text-gray-800 mb-10">Dashboard</h1>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
+        {/* Analytics Section */}
+        <section className="mb-12">
+          <h2 className="text-xl font-bold text-gray-700 mb-6">Your Analytics</h2>
+          <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-4">
+            {/* Campaigns Card */}
+            <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+              <div className="flex items-center">
+                <FaBullhorn className="text-blue-500 text-2xl mr-3" />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500">Total Campaigns</h3>
+                  <p className="text-4xl font-bold text-gray-800 mt-2">{analyticsData.totalCampaigns}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Referrals Card */}
+            <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+              <div className="flex items-center">
+                <FaChartLine className="text-green-500 text-2xl mr-3" />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500">Total Referrals</h3>
+                  <p className="text-4xl font-bold text-gray-800 mt-2">{analyticsData.totalReferrals}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Referred Users Card */}
+            <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+              <div className="flex items-center">
+                <FaUsers className="text-purple-500 text-2xl mr-3" />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500">Referred Users</h3>
+                  <p className="text-4xl font-bold text-gray-800 mt-2">{analyticsData.totalReferredUsers}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Points Earned Card */}
+            <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+              <div className="flex items-center">
+                <FaGift className="text-yellow-500 text-2xl mr-3" />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500">Points Earned</h3>
+                  <p className="text-4xl font-bold text-gray-800 mt-2">{analyticsData.totalPointsEarned}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Campaign Management Section */}
+        <section className="mb-12">
+          <h2 className="text-xl font-bold text-gray-700 mb-6">Campaign Management</h2>
+          <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+            <h3 className="text-md font-semibold text-gray-600 mb-2">Create and Manage Campaigns</h3>
+            <p className="text-gray-500 mb-4">
+              Set up referral campaigns and track their performance.
+            </p>
+            <button 
+              onClick={() => window.location.href = '/campaigns'}
+              className="bg-blue-500 hover:bg-blue-600 text-white font-medium px-5 py-2 rounded-lg"
+            >
+              Manage Campaigns
+            </button>
+          </div>
+        </section>
+
+        {/* Referral Tracking Section */}
+        <section className="mb-12">
+          <h2 className="text-xl font-bold text-gray-700 mb-6">Referral Tracking</h2>
+          <div className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+            <h3 className="text-md font-semibold text-gray-600 mb-2">Track Your Referrals</h3>
+            <p className="text-gray-500 mb-4">
+              Monitor your referral chain and reward points.
+            </p>
+            <button 
+              onClick={() => window.location.href = '/referral-dashboard'}
+              className="bg-blue-500 hover:bg-blue-600 text-white font-medium px-5 py-2 rounded-lg"
+            >
+              View Referral Dashboard
+            </button>
+          </div>
+        </section>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
-}
+};
+
+export default Dashboard;
