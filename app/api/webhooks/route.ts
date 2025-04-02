@@ -4,7 +4,6 @@
 
 import { MongoClient } from 'mongodb';
 import { NextRequest, NextResponse } from 'next/server'
-import { clerkClient ,auth} from '@clerk/nextjs/server';
 
 
 const uri = process.env.MONGO_URI as string;
