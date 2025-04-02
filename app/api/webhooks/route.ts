@@ -35,10 +35,10 @@ try {
       console.log("connected")
       const db = client.db(dbName!); 
 
-      const { id, email_addresses, username, phone } = data;
+      const { id, email_addresses, first_name, last_name, phone } = data;
 
       const newUser = {
-         name: username as string,
+         name: first_name + " " + last_name as string ,
 
          email: email_addresses[0].email_address as string,
 

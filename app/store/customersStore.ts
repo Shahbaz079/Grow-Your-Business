@@ -5,6 +5,8 @@ type Customer = {
   email: string;
   phone: number;
   address: string;
+  campaignId?: string;
+  campaignName?: string;
 };
 
 type CustomerStore = {

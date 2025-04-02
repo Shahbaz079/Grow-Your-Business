@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
   try {
     const code = request.nextUrl.searchParams.get("code");
     const userId = request.nextUrl.searchParams.get("userId");
-    const stats = request.nextUrl.searchParams.get("stats");
+    const type = request.nextUrl.searchParams.get("type");
 
     if (!userId) {
       return NextResponse.json(
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     const referrals = db.collection("referrals");
     const campaigns = db.collection("campaigns");
 
-    if (stats === "true") {
+    if (type === "stats") {
       // Get all referrals for the user
       const userReferrals = await referrals
         .find({ referredBy: userId })

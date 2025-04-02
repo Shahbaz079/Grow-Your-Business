@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { FaFacebook, FaTwitter, FaWhatsapp, FaCopy, FaCheck, FaEnvelope, FaMagic, FaSync } from "react-icons/fa";
+import { FaFacebook, FaTwitter, FaWhatsapp, FaCopy, FaCheck, FaEnvelope, FaMagic, FaSync, FaShare, FaTelegram } from "react-icons/fa";
 import { use } from "react";
 
 interface PageProps {
@@ -24,6 +24,18 @@ interface ReferralStats {
   }>;
 }
 
+interface ReferralData {
+  referralCode: string;
+  campaignName: string;
+  rewardPoints: number;
+  message?: string;
+}
+
+interface GeneratedMessage {
+  id: string;
+  text: string;
+}
+
 export default function ReferralPage({ params }: PageProps) {
   const resolvedParams = use(params);
   const { user, isLoaded } = useUser();
@@ -37,37 +49,52 @@ export default function ReferralPage({ params }: PageProps) {
   const [aiMessages, setAiMessages] = useState<string[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<string>("");
   const [generatingMessages, setGeneratingMessages] = useState(false);
+  const [referralData, setReferralData] = useState<ReferralData | null>(null);
+  const [generatedMessages, setGeneratedMessages] = useState<GeneratedMessage[]>([]);
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  // Memoize the referral link
+  const referralLink = useMemo(() => {
+    if (!referralData?.referralCode) return '';
+    return `${window.location.origin}/referral/${referralData.referralCode}`;
+  }, [referralData?.referralCode]);
+
+  // Memoize the share message
+  const shareMessage = useMemo(() => {
+    if (!selectedMessage && !referralData) return '';
+    return selectedMessage || `Join me in ${referralData?.campaignName} and earn ${referralData?.rewardPoints} points! Use my referral link: ${referralLink}`;
+  }, [selectedMessage, referralData, referralLink]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [referralRes, statsRes] = await Promise.all([
-          fetch(`/api/referral?code=${resolvedParams.code}&userId=${user?.id}`),
-          fetch(`/api/referral?stats=true&userId=${user?.id}`)
-        ]);
+        setLoading(true);
+        setError(null);
 
-        const referralData = await referralRes.json();
-        const statsData = await statsRes.json();
+        // Fetch referral data
+        const referralResponse = await fetch(`/api/referral?code=${resolvedParams.code}&userId=${user?.id}`);
+        const referralResult = await referralResponse.json();
 
-        if (referralData.error) {
-          setError(referralData.error);
-          return;
+        if (!referralResponse.ok) {
+          throw new Error(referralResult.error || 'Failed to fetch referral data');
         }
 
+        setReferralData(referralResult);
+
         // Get campaign details from the referral data
-        const campaignData = await fetch(`/api/campaign?uid=${referralData.campaignId}&type=single`).then(res => res.json());
+        const campaignData = await fetch(`/api/campaign?uid=${referralResult.campaignId}&type=single`).then(res => res.json());
         
-        if (referralData.message === "User already referred") {
+        if (referralResult.message === "User already referred") {
           setCampaign(campaignData.name);
           setRewardPoints(campaignData.rewardPoints);
-          setStats(statsData);
+          setStats(referralResult.stats);
           return;
         }
 
         setCampaign(campaignData.name);
         setRewardPoints(campaignData.rewardPoints);
-        setStats(statsData);
-        console.log(referralData)
+        setStats(referralResult.stats);
+        console.log(referralResult)
       } catch (error) {
         console.error("Error fetching data:", error);
         setError("Failed to load referral data");
@@ -105,6 +132,10 @@ export default function ReferralPage({ params }: PageProps) {
 
       setAiMessages(data.messages);
       setSelectedMessage(data.messages[0]);
+      setGeneratedMessages(data.messages.map((text: string, index: number) => ({
+        id: `msg-${index}`,
+        text,
+      })));
     } catch (error) {
       console.error("Error generating messages:", error);
       setError("Failed to generate messages");
@@ -113,39 +144,44 @@ export default function ReferralPage({ params }: PageProps) {
     }
   };
 
-  const handleShare = async (platform: string) => {
-    const shareUrl = `${window.location.origin}/referral/${resolvedParams.code}`;
-    const shareText = selectedMessage + `\n\nUse my referral link to get started:\n${shareUrl}`;
-
-    switch (platform) {
-      case 'facebook':
-        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`);
-        break;
-      case 'twitter':
-        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`);
-        break;
-      case 'whatsapp':
-        window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`);
-        break;
-      case 'copy':
-        navigator.clipboard.writeText(shareText);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-        break;
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(referralLink);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
     }
   };
 
+  const handleShare = (platform: string) => {
+    const shareUrls = {
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(shareMessage)}`,
+      telegram: `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(shareMessage)}`,
+      twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareMessage)}&url=${encodeURIComponent(referralLink)}`,
+    };
+
+    window.open(shareUrls[platform as keyof typeof shareUrls], '_blank');
+  };
+
   if (loading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
     </div>
   );
 
   if (error) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="bg-red-50 p-6 rounded-lg shadow-md max-w-md w-full">
-        <h2 className="text-red-600 text-xl font-semibold mb-2">Error</h2>
-        <p className="text-red-500">{error}</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center">
+      <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full text-center">
+        <div className="text-red-500 text-4xl mb-4">⚠️</div>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">Oops!</h1>
+        <p className="text-gray-600 mb-6">{error}</p>
+        <button
+          onClick={() => router.push('/')}
+          className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+        >
+          Go Home
+        </button>
       </div>
     </div>
   );
@@ -159,123 +195,124 @@ export default function ReferralPage({ params }: PageProps) {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        {/* Header Section */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Share & Earn</h1>
-          <p className="text-gray-500">Share with friends and earn rewards!</p>
-        </div>
-
-        {/* Main Content */}
-        <div className="max-w-2xl mx-auto">
-          {/* Points Earned Section */}
-          <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-6">Your Earnings</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-blue-50 p-6 rounded-lg text-center">
-                <div className="text-3xl font-bold text-blue-600 mb-2">{stats?.totalPointsEarned || 0}</div>
-                <div className="text-blue-600 font-medium">Total Points Earned</div>
-              </div>
-              <div className="bg-green-50 p-6 rounded-lg text-center">
-                <div className="text-3xl font-bold text-green-600 mb-2">{stats?.totalReferredUsers || 0}</div>
-                <div className="text-green-600 font-medium">Friends Referred</div>
-              </div>
-              <div className="bg-purple-50 p-6 rounded-lg text-center">
-                <div className="text-3xl font-bold text-purple-600 mb-2">{stats?.totalReferrals || 0}</div>
-                <div className="text-purple-600 font-medium">Active Referrals</div>
-              </div>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+          {/* Header Section */}
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 text-white shadow-lg">
+            <h1 className="text-4xl font-bold mb-4 tracking-tight">Share & Earn</h1>
+            <p className="text-lg text-blue-100 font-medium">
+              Invite friends to <span className="font-bold">{referralData?.campaignName}</span> and earn{' '}
+              <span className="font-bold text-yellow-300">{referralData?.rewardPoints} points</span> for each referral!
+            </p>
           </div>
 
-          {/* Share Message Section */}
-          <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-semibold text-gray-900">Share Message</h2>
-              <button
-                onClick={generateMessages}
-                disabled={generatingMessages}
-                className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all duration-200 disabled:opacity-50"
-              >
-                {generatingMessages ? (
-                  <>
-                    <FaSync className="mr-2 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <FaMagic className="mr-2" />
-                    Generate New Messages
-                  </>
-                )}
-              </button>
-            </div>
-
-            {aiMessages.length > 0 ? (
+          {/* Main Content */}
+          <div className="p-8 bg-gray-50">
+            {/* Message Selection */}
+            <div className="mb-8 bg-white rounded-xl shadow-md p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">Choose a Message</h2>
+                <button
+                  onClick={generateMessages}
+                  disabled={generatingMessages}
+                  className={`flex items-center space-x-3 px-6 py-3 rounded-lg shadow-md ${
+                    generatingMessages
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 transform hover:scale-105 transition-all'
+                  } text-white font-medium`}
+                >
+                  {generatingMessages ? (
+                    <>
+                      <FaSync className="animate-spin text-xl" />
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FaMagic className="text-xl" />
+                      <span>Generate New Messages</span>
+                    </>
+                  )}
+                </button>
+              </div>
               <div className="space-y-4">
-                {aiMessages.map((message, index) => (
-                  <div
-                    key={index}
-                    className={`p-4 rounded-lg cursor-pointer transition-all duration-200 ${
-                      selectedMessage === message
-                        ? "bg-blue-50 border-2 border-blue-500"
-                        : "bg-gray-50 hover:bg-gray-100"
-                    }`}
-                    onClick={() => setSelectedMessage(message)}
-                  >
-                    <div className="whitespace-pre-wrap text-gray-600 font-medium">
-                      {message}
-                    </div>
+                {generatingMessages ? (
+                  <div className="animate-pulse space-y-4">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-20 bg-gray-100 rounded-lg"></div>
+                    ))}
                   </div>
-                ))}
+                ) : generatedMessages.length > 0 ? (
+                  generatedMessages.map((message) => (
+                    <button
+                      key={message.id}
+                      onClick={() => setSelectedMessage(message.text)}
+                      className={`w-full p-5 rounded-lg text-left transition-all shadow-sm ${
+                        selectedMessage === message.text
+                          ? 'bg-blue-50 border-2 border-blue-500 shadow-md'
+                          : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent hover:shadow-md'
+                      }`}
+                    >
+                      <p className="text-gray-800 font-medium leading-relaxed">{message.text}</p>
+                    </button>
+                  ))
+                ) : (
+                  <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                    <FaMagic className="text-4xl text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600 text-lg font-medium">No messages generated yet</p>
+                    <p className="text-gray-500 mt-2">Click the button above to generate some engaging messages!</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="bg-gray-50 p-6 rounded-lg text-center">
-                <FaEnvelope className="text-blue-500 text-2xl mx-auto mb-4" />
-                <p className="text-gray-600">Click the button above to generate AI-powered messages</p>
-              </div>
-            )}
-          </div>
-
-          {/* Share Section */}
-          <div className="bg-white rounded-xl shadow-lg p-8">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-6">Share Options</h2>
-            <div className="flex flex-wrap gap-4">
-              <button
-                onClick={() => handleShare('facebook')}
-                className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200"
-              >
-                <FaFacebook className="mr-2" />
-                Share on Facebook
-              </button>
-              <button
-                onClick={() => handleShare('twitter')}
-                className="flex items-center px-6 py-3 bg-blue-400 text-white rounded-lg hover:bg-blue-500 transition-all duration-200"
-              >
-                <FaTwitter className="mr-2" />
-                Share on Twitter
-              </button>
-              <button
-                onClick={() => handleShare('whatsapp')}
-                className="flex items-center px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all duration-200"
-              >
-                <FaWhatsapp className="mr-2" />
-                Share on WhatsApp
-              </button>
-              <button
-                onClick={() => handleShare('copy')}
-                className="flex items-center px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-all duration-200"
-              >
-                <FaCopy className="mr-2" />
-                Copy Message
-              </button>
             </div>
-            {copied && (
-              <p className="text-green-500 mt-4 flex items-center">
-                <FaCheck className="mr-2" />
-                Message copied to clipboard!
-              </p>
-            )}
+
+            {/* Share Section */}
+            <div className="space-y-6 bg-white rounded-xl shadow-md p-6">
+              <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Your Referral Link</h3>
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="text"
+                    readOnly
+                    value={referralLink}
+                    className="flex-1 p-3 border border-gray-300 rounded-lg bg-white font-mono text-sm text-gray-700"
+                  />
+                  <button
+                    onClick={handleCopyLink}
+                    className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg"
+                  >
+                    {copySuccess ? <FaCheck className="text-xl" /> : <FaCopy className="text-xl" />}
+                  </button>
+                </div>
+                {copySuccess && (
+                  <p className="text-sm text-green-600 mt-2 font-medium">Link copied to clipboard!</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <button
+                  onClick={() => handleShare('whatsapp')}
+                  className="flex items-center justify-center space-x-3 bg-green-500 text-white p-4 rounded-lg hover:bg-green-600 transition-colors shadow-md hover:shadow-lg font-medium"
+                >
+                  <FaWhatsapp className="text-2xl" />
+                  <span>WhatsApp</span>
+                </button>
+                <button
+                  onClick={() => handleShare('telegram')}
+                  className="flex items-center justify-center space-x-3 bg-blue-500 text-white p-4 rounded-lg hover:bg-blue-600 transition-colors shadow-md hover:shadow-lg font-medium"
+                >
+                  <FaTelegram className="text-2xl" />
+                  <span>Telegram</span>
+                </button>
+                <button
+                  onClick={() => handleShare('twitter')}
+                  className="flex items-center justify-center space-x-3 bg-blue-400 text-white p-4 rounded-lg hover:bg-blue-500 transition-colors shadow-md hover:shadow-lg font-medium"
+                >
+                  <FaTwitter className="text-2xl" />
+                  <span>Twitter</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
